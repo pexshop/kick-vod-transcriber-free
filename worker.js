@@ -14,7 +14,7 @@ export default {
     if (url.pathname === "/api/health") {
       return Response.json({
         ok: true,
-        service: "kick-vod-transcriber",
+        service: "kick-vod-transcriber-free",
         extractorConfigured: Boolean(env.EXTRACTOR_URL && env.EXTRACTOR_TOKEN),
         transcription: "local browser model; no paid API",
       });
@@ -45,7 +45,7 @@ export default {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": \`Bearer \${env.EXTRACTOR_TOKEN}\`,
+            "Authorization": `Bearer ${env.EXTRACTOR_TOKEN}`,
           },
           body: JSON.stringify({ url: body.url }),
           signal: AbortSignal.timeout(1000 * 60 * 10),
