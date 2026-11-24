@@ -1,0 +1,10 @@
+name = "kick-vod-transcriber-free"
+main = "worker.js"
+compatibility_date = "2026-11-24"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[vars]
+# Set EXTRACTOR_URL as a Worker variable and EXTRACTOR_TOKEN as a secret.
