@@ -129,12 +129,18 @@ form.addEventListener("submit",async event=>{
     if(blob.size>24*1024*1024)throw new Error("Extracted audio is larger than the 24 MB free limit.");
     setStatus("Audio ready. Preparing your browser for local transcription…");
 
-    const audioContext=new AudioContext();
-    const decoded=await audioContext.decodeAudioData(await blob.arrayBuffer());
+    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+    if(!AudioContextClass)throw new Error("This browser does not support audio decoding. Please update Safari or try another browser.");
+    // Decode at Whisper's 16 kHz input rate to reduce memory use on iPhone.
+    const audioContext=new AudioContextClass({sampleRate:16000});
+    let decoded;
+    try{
+      decoded=await audioContext.decodeAudioData(await blob.arrayBuffer());
+    }finally{
+      await audioContext.close();
+    }
+    if(decoded.duration>30*60)throw new Error("This VOD exceeds the 30-minute free limit.");
     const audio=resampleTo16k(decoded);
-    await audioContext.close();
-
-    setStatus("Loading Whisper tiny English model. The first download may take a few minutes…");
     setStatus("Starting local transcription in a background worker…");
     const output=await transcribeInWorker(audio);
     const chunks=output.chunks||[];
