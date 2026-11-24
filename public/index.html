@@ -45,9 +45,15 @@
     .toolbox input{margin:4px 0 10px}
     .tool-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
     .tool-grid button{width:100%;font-size:12px;padding:12px 9px}
+    .stats-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}
+    .stat-card{padding:13px 14px;border:1px solid #293b4d;border-radius:13px;background:linear-gradient(145deg,#111d28,#0a121a)}
+    .stat-value{display:block;color:var(--accent2);font-size:22px;font-weight:850;letter-spacing:-.04em}
+    .stat-label{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+    .tool-heading{margin:18px 0 9px;color:#a9bacb;font-size:11px;font-weight:850;letter-spacing:.12em;text-transform:uppercase}
+    .tool-output{padding:13px 15px;margin-top:10px;border:1px solid #2a3a4a;border-radius:12px;background:#09121b;color:#c8d5e2;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto}
     .matches{font-size:12px;color:#b4c1ce;white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;margin-top:8px;padding:10px 12px;border-radius:10px;background:#0a1119}
     footer{margin-top:28px;color:#657487;font-size:11px;letter-spacing:.02em}
-    @media(max-width:600px){main{width:min(100% - 28px,900px);padding-top:42px}h1{font-size:clamp(42px,13vw,62px)}.panel{border-radius:19px}.actions{display:grid}.actions button:first-child{width:100%}.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.status{font-size:12px}}
+    @media(max-width:600px){.stats-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.stat-card{padding:10px 8px}.stat-value{font-size:19px}.stat-label{font-size:10px}main{width:min(100% - 28px,900px);padding-top:42px}h1{font-size:clamp(42px,13vw,62px)}.panel{border-radius:19px}.actions{display:grid}.actions button:first-child{width:100%}.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.status{font-size:12px}}
     @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important}}
 </style>
 </head>
@@ -69,11 +75,30 @@
       <button class="secondary" id="download" type="button">Download TXT</button>
     </div>
     <pre id="result" class="result hidden"></pre>
+    <section id="statsPanel" class="stats-grid hidden" aria-label="Transcript statistics">
+      <div class="stat-card"><span class="stat-value" id="statWords">0</span><span class="stat-label">Words</span></div>
+      <div class="stat-card"><span class="stat-value" id="statSegments">0</span><span class="stat-label">Segments</span></div>
+      <div class="stat-card"><span class="stat-value" id="statRead">0m</span><span class="stat-label">Reading time</span></div>
+    </section>
     <section id="toolbox" class="toolbox hidden" aria-label="Transcript tools">
       <h2>Explore your transcript</h2>
       <label for="transcriptSearch">Find a word or phrase</label>
       <input id="transcriptSearch" type="search" placeholder="Search the transcript…">
       <div id="searchMatches" class="matches" aria-live="polite"></div>
+      <div class="tool-heading">Export</div>
+      <div class="tool-grid">
+        <button class="secondary" id="md" type="button">Download Markdown</button>
+        <button class="secondary" id="cleanTxt" type="button">Clean TXT</button>
+        <button class="secondary" id="copyClean" type="button">Copy clean text</button>
+      </div>
+      <div class="tool-heading">Analyze</div>
+      <div class="tool-grid">
+        <button class="secondary" id="showStats" type="button">Transcript stats</button>
+        <button class="secondary" id="keywords" type="button">Top keywords</button>
+        <button class="secondary" id="copySummary" type="button">Copy summary</button>
+      </div>
+      <div id="extraToolOutput" class="tool-output hidden" aria-live="polite"></div>
+      <div class="tool-heading">Subtitles &amp; discovery</div>
       <div class="tool-grid" style="margin-top:12px">
         <button class="secondary" id="srt" type="button">Download SRT</button>
         <button class="secondary" id="vtt" type="button">Download VTT</button>
@@ -276,6 +301,54 @@ document.querySelector("#findMoments").addEventListener("click",()=>{
   const out=matches.slice(0,40).map(s=>(typeof s.time==="number"?"["+formatSrtTime(s.time).slice(0,8)+"] ":"")+s.text);
   resultBox.textContent=out.length?"POSSIBLE KEY MOMENTS (keyword-based; review manually)\n\n"+out.join("\n"):"No obvious highlight phrases found. Search the transcript for names, reactions, or game terms.";
   resultBox.classList.remove("hidden");setStatus("Possible moments found with keyword matching; this is not semantic highlight detection.");
+});
+
+
+function cleanTranscript(){
+  return transcriptText.split("\n").map(line=>line.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/,"").trim()).filter(Boolean).join("\n");
+}
+function getTranscriptStats(){
+  const words=cleanTranscript().match(/\b[\p{L}\p{N}'’-]+\b/gu)||[];
+  const segments=transcriptChunks.length||cleanTranscript().split(/\n+/).filter(Boolean).length;
+  return {words:words.length,segments,minutes:Math.max(1,Math.ceil(words.length/200))};
+}
+function showExtraTool(text){
+  const box=document.querySelector("#extraToolOutput");
+  box.textContent=text;box.classList.remove("hidden");
+}
+document.querySelector("#md").addEventListener("click",()=>{
+  const stats=getTranscriptStats();
+  const md="# Kick VOD transcript\n\n- Words: "+stats.words+"\n- Segments: "+stats.segments+"\n\n## Transcript\n\n"+cleanTranscript().split("\n").map(line=>"- "+line).join("\n")+"\n";
+  downloadText("kick-transcript.md",md,"text/markdown;charset=utf-8");
+  setStatus("Markdown transcript downloaded.");
+});
+document.querySelector("#cleanTxt").addEventListener("click",()=>{
+  downloadText("kick-transcript-clean.txt",cleanTranscript(),"text/plain;charset=utf-8");
+  setStatus("Clean transcript downloaded without timestamps.");
+});
+document.querySelector("#copyClean").addEventListener("click",async()=>{
+  try{await navigator.clipboard.writeText(cleanTranscript());setStatus("Clean transcript copied.");}
+  catch(e){setStatus("Clipboard access is unavailable in this browser.");}
+});
+document.querySelector("#showStats").addEventListener("click",()=>{
+  const s=getTranscriptStats();
+  document.querySelector("#statWords").textContent=s.words.toLocaleString();
+  document.querySelector("#statSegments").textContent=s.segments.toLocaleString();
+  document.querySelector("#statRead").textContent=s.minutes+"m";
+  document.querySelector("#statsPanel").classList.remove("hidden");
+  showExtraTool("Transcript overview\n\nWords: "+s.words+"\nSegments: "+s.segments+"\nEstimated reading time: "+s.minutes+" minute(s), at 200 words per minute.");
+});
+document.querySelector("#keywords").addEventListener("click",()=>{
+  const stop=new Set(["the","and","that","this","with","you","for","are","was","but","have","not","they","just","like","what","when","then","there","here","yeah","okay","from","your","about","would","could","have","it's","its","into","out","all","one","got","get","know"]);
+  const counts={};(cleanTranscript().toLowerCase().match(/\b[a-z']{3,}\b/g)||[]).forEach(w=>{if(!stop.has(w))counts[w]=(counts[w]||0)+1;});
+  const top=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,15);
+  showExtraTool(top.length?"TOP KEYWORDS (frequency only)\n\n"+top.map(([word,n],i)=>(i+1)+". "+word+" — "+n).join("\n"):"Not enough English words to calculate keywords.");
+});
+document.querySelector("#copySummary").addEventListener("click",async()=>{
+  const text=resultBox.textContent||"";
+  if(!/QUICK EXTRACTIVE SUMMARY/.test(text)){setStatus("Create a quick summary first, then use Copy summary.");return;}
+  try{await navigator.clipboard.writeText(text);setStatus("Summary copied.");}
+  catch(e){setStatus("Clipboard access is unavailable in this browser.");}
 });
 
 document.querySelector("#copy").addEventListener("click",async()=>{
