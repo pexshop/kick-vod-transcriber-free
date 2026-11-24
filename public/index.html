@@ -53,6 +53,33 @@ const resultBox=document.querySelector("#result");
 const resultActions=document.querySelector("#resultActions");
 let transcriptText="";
 
+function transcribeInWorker(audio){
+  return new Promise((resolve,reject)=>{
+    const worker=new Worker("/transcribe-worker.js",{type:"module"});
+    let finished=false;
+    const finish=(callback,value)=>{
+      if(finished)return;
+      finished=true;
+      worker.terminate();
+      callback(value);
+    };
+    worker.onmessage=({data})=>{
+      if(data.type==="progress"){
+        setStatus(data.message);
+      }else if(data.type==="complete"){
+        finish(resolve,data.output);
+      }else if(data.type==="error"){
+        finish(reject,new Error(data.message||"Local transcription failed."));
+      }
+    };
+    worker.onerror=(event)=>{
+      event.preventDefault();
+      finish(reject,new Error("The transcription worker failed to start. Try a current version of Safari or Chrome."));
+    };
+    worker.postMessage({type:"transcribe",audio},[audio.buffer]);
+  });
+}
+
 function setStatus(message){statusBox.textContent=message;}
 function resampleTo16k(buffer){
   const targetRate=16000, sourceRate=buffer.sampleRate;
@@ -108,25 +135,8 @@ form.addEventListener("submit",async event=>{
     await audioContext.close();
 
     setStatus("Loading Whisper tiny English model. The first download may take a few minutes…");
-    const {pipeline,env}=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2");
-    env.allowLocalModels=false;
-    const transcriber=await pipeline("automatic-speech-recognition","onnx-community/whisper-tiny.en",{
-      dtype:"q8",
-      progress_callback:(progress)=>{
-        if(progress.status==="progress"&&progress.total){
-          const pct=Math.round(progress.loaded/progress.total*100);
-          setStatus("Downloading speech model… "+pct+"%");
-        }else if(progress.status==="done"){
-          setStatus("Speech model ready. Transcribing on your device…");
-        }
-      }
-    });
-    setStatus("Transcribing locally. Longer recordings take longer; keep this page open…");
-    const output=await transcriber(audio,{
-      chunk_length_s:30,
-      stride_length_s:5,
-      return_timestamps:true
-    });
+    setStatus("Starting local transcription in a background worker…");
+    const output=await transcribeInWorker(audio);
     const chunks=output.chunks||[];
     if(chunks.length){
       transcriptText=chunks.map(chunk=>{
