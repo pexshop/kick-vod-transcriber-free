@@ -224,23 +224,45 @@ let liveStream=null,liveContext=null,liveProcessor=null,liveWorker=null;
 let liveBuffers=[],liveSamples=0,liveSampleRate=0,liveQueue=Promise.resolve();
 let liveStartedAt=0,liveChunkIndex=0,liveStopping=false;
 function liveMessage(message){liveStatus.textContent=message;}
+let liveRequestId=0;
 function getLiveWorker(){
   if(liveWorker)return liveWorker;
   liveWorker=new Worker("/transcribe-worker.js",{type:"module"});
-  liveWorker.onerror=()=>liveMessage("The local transcription worker encountered an error. Stop and restart capture.");
+  liveWorker.onerror=event=>{
+    const message=event.message||"Worker failed to load. Check the model CDN/network and reload the page.";
+    liveMessage("转录引擎错误："+message);
+    liveWorker?.terminate();liveWorker=null;
+  };
+  liveWorker.onmessageerror=()=>{
+    liveMessage("转录引擎消息解码失败，请停止采集后重试。");
+    liveWorker?.terminate();liveWorker=null;
+  };
   return liveWorker;
 }
 function transcribeLiveChunk(audio,index){
   return new Promise((resolve,reject)=>{
-    const worker=getLiveWorker();
-    const onMessage=({data})=>{
-      if(data.type==="progress"){liveMessage(data.message);return;}
+    let worker;
+    try{worker=getLiveWorker();}catch(error){reject(error);return;}
+    const requestId=++liveRequestId;
+    const cleanup=()=>{
       worker.removeEventListener("message",onMessage);
+      worker.removeEventListener("error",onError);
+    };
+    const onError=event=>{
+      cleanup();liveWorker=null;
+      reject(new Error(event.message||"转录引擎加载失败。请检查网络后重试。"));
+    };
+    const onMessage=({data})=>{
+      if(data.requestId!==requestId)return;
+      if(data.type==="progress"){liveMessage(data.message);return;}
+      cleanup();
       if(data.type==="complete")resolve(data.output);
-      else if(data.type==="error")reject(new Error(data.message||"Live transcription failed."));
+      else if(data.type==="error")reject(new Error(data.message||"转录失败，未返回具体原因。"));
     };
     worker.addEventListener("message",onMessage);
-    worker.postMessage({type:"transcribe",audio},[audio.buffer]);
+    worker.addEventListener("error",onError);
+    try{worker.postMessage({type:"transcribe",requestId,audio},[audio.buffer]);}
+    catch(error){cleanup();reject(error);}
   });
 }
 function resampleFloatTo16k(input,rate){
@@ -253,7 +275,7 @@ function resampleFloatTo16k(input,rate){
   return out;
 }
 function appendLiveOutput(output,index){
-  const offset=index*20, chunks=output.chunks||[];
+  const offset=index*10, chunks=output.chunks||[];
   if(chunks.length){
     for(const chunk of chunks){
       const t=chunk.timestamp||[null,null];
@@ -265,7 +287,7 @@ function appendLiveOutput(output,index){
   resultBox.textContent=transcriptText;
   resultBox.classList.remove("hidden");resultActions.classList.remove("hidden");
   document.querySelector("#toolbox").classList.remove("hidden");
-  liveMessage("Live audio processed through "+((index+1)*20)+" seconds. Keep the Kick tab playing; new text appears after each segment.");
+  liveMessage("Live audio processed through "+((index+1)*10)+" seconds. Keep the Kick tab playing; new text appears after each segment.");
 }
 function queueLiveAudio(samples){
   if(!samples.length)return;
@@ -278,8 +300,8 @@ function queueLiveAudio(samples){
   }).catch(error=>liveMessage("Segment "+(index+1)+" failed: "+(error.message||error)+". Capture will continue."));
 }
 function takeLiveChunk(force=false){
-  if(!liveSamples||(!force&&liveSamples<liveSampleRate*20))return;
-  const count=force?liveSamples:liveSampleRate*20;
+  if(!liveSamples||(!force&&liveSamples<liveSampleRate*10))return;
+  const count=force?liveSamples:liveSampleRate*10;
   const merged=new Float32Array(count);let offset=0,remaining=count;
   while(remaining>0&&liveBuffers.length){
     const first=liveBuffers[0],take=Math.min(first.length,remaining);
@@ -312,7 +334,7 @@ liveStart.addEventListener("click",async()=>{
     liveStream.getVideoTracks().forEach(track=>track.addEventListener("ended",()=>stopLiveCapture()));
     liveStream.getAudioTracks().forEach(track=>track.addEventListener("ended",()=>stopLiveCapture()));
     liveStop.disabled=false;liveIndicator.classList.add("active");liveIndicator.textContent="LIVE TRANSCRIPTION · CAPTURING";
-    liveMessage("Capturing tab audio. First transcript appears after approximately 20 seconds and model loading.");
+    liveMessage("Capturing tab audio. First transcript appears after approximately 10 seconds and model loading.");
   }catch(error){liveStart.disabled=false;liveMessage(error.message||String(error));}
 });
 async function startMicrophoneCapture(){
@@ -333,7 +355,7 @@ async function startMicrophoneCapture(){
     source.connect(liveProcessor);liveProcessor.connect(mute);mute.connect(liveContext.destination);
     liveStream.getAudioTracks().forEach(track=>track.addEventListener("ended",()=>stopLiveCapture()));
     liveStop.disabled=false;liveIndicator.classList.add("active");liveIndicator.textContent="LIVE TRANSCRIPTION · MICROPHONE";
-    liveMessage("Microphone is listening. Play Kick aloud near this device. First text appears after about 20 seconds plus model loading.");
+    liveMessage("Microphone is listening. Play Kick aloud near this device. First text appears after about 10 seconds plus model loading.");
   }catch(error){if(liveStream){liveStream.getTracks().forEach(t=>t.stop());liveStream=null;}liveMic.disabled=false;liveMessage(error.message||String(error));}
 }
 liveMic.addEventListener("click",startMicrophoneCapture);
