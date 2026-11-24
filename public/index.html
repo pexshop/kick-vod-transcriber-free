@@ -50,6 +50,8 @@
         <button class="secondary" id="vtt" type="button">Download VTT</button>
         <button class="secondary" id="json" type="button">Download JSON</button>
         <button class="secondary" id="clearSearch" type="button">Clear search</button>
+        <button class="secondary" id="makeSummary" type="button">Create quick summary</button>
+        <button class="secondary" id="findMoments" type="button">Find key moments</button>
       </div>
     </section>
     <div class="hint"><strong>Free-tier limits:</strong> up to 30 minutes per VOD and 24 MB extracted audio. The first model download is large. Transcription speed depends on your device; phones may take a while, so keep this page open. The free hosting service may sleep between uses.</div>
@@ -220,6 +222,31 @@ document.querySelector("#transcriptSearch").addEventListener("input",event=>{
 document.querySelector("#clearSearch").addEventListener("click",()=>{
   document.querySelector("#transcriptSearch").value="";
   document.querySelector("#searchMatches").textContent="";
+});
+
+
+function transcriptSentences(){
+  return transcriptChunks.length
+    ? transcriptChunks.map(x=>({text:String(x.text||"").trim(),time:Array.isArray(x.timestamp)?x.timestamp[0]:null})).filter(x=>x.text)
+    : transcriptText.split(/(?<=[.!?])\s+|\n+/).map(text=>({text:text.trim(),time:null})).filter(x=>x.text);
+}
+document.querySelector("#makeSummary").addEventListener("click",()=>{
+  const sentences=transcriptSentences();
+  if(!sentences.length){setStatus("There is no transcript to summarize.");return;}
+  const words=transcriptText.toLowerCase().match(/[a-z]{3,}/g)||[];
+  const stop=new Set(["the","and","that","this","with","you","for","are","was","but","have","not","they","just","like","what","when","then","there","here","yeah","okay"]);
+  const freq={};words.forEach(w=>{if(!stop.has(w))freq[w]=(freq[w]||0)+1;});
+  const scored=sentences.map((s,i)=>({...s,i,score:(s.text.toLowerCase().match(/[a-z]{3,}/g)||[]).reduce((n,w)=>n+(freq[w]||0),0)/Math.max(1,s.text.length**0.45)}));
+  const chosen=scored.sort((a,b)=>b.score-a.score).slice(0,Math.min(6,scored.length)).sort((a,b)=>a.i-b.i);
+  resultBox.textContent="QUICK EXTRACTIVE SUMMARY (not an AI-generated interpretation)\n\n"+chosen.map((s,i)=>(i+1)+". "+(typeof s.time==="number"?"["+formatSrtTime(s.time).slice(0,8)+"] ":"")+s.text).join("\n");
+  resultBox.classList.remove("hidden");setStatus("Quick summary created from repeated topics and representative lines.");
+});
+document.querySelector("#findMoments").addEventListener("click",()=>{
+  const cues=/\b(wow|wait|what|no way|oh my god|omg|insane|crazy|lets go|let's go|clip that|unbelievable|important|finally|winner|lost|won|big play|huge)\b/i;
+  const matches=transcriptSentences().filter(s=>cues.test(s.text));
+  const out=matches.slice(0,40).map(s=>(typeof s.time==="number"?"["+formatSrtTime(s.time).slice(0,8)+"] ":"")+s.text);
+  resultBox.textContent=out.length?"POSSIBLE KEY MOMENTS (keyword-based; review manually)\n\n"+out.join("\n"):"No obvious highlight phrases found. Search the transcript for names, reactions, or game terms.";
+  resultBox.classList.remove("hidden");setStatus("Possible moments found with keyword matching; this is not semantic highlight detection.");
 });
 
 document.querySelector("#copy").addEventListener("click",async()=>{
