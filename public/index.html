@@ -50,7 +50,8 @@
     .stat-value{display:block;color:var(--accent2);font-size:22px;font-weight:850;letter-spacing:-.04em}
     .stat-label{display:block;color:var(--muted);font-size:11px;margin-top:2px}
     .tool-heading{margin:18px 0 9px;color:#a9bacb;font-size:11px;font-weight:850;letter-spacing:.12em;text-transform:uppercase}
-    textarea{width:100%;min-height:130px;padding:14px 16px;border-radius:13px;border:1px solid #314253;background:#090f16;color:#fff;font:inherit;resize:vertical;outline:none}\n    .tool-output{padding:13px 15px;margin-top:10px;border:1px solid #2a3a4a;border-radius:12px;background:#09121b;color:#c8d5e2;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto}
+    textarea{width:100%;min-height:130px;padding:14px 16px;border-radius:13px;border:1px solid #314253;background:#090f16;color:#fff;font:inherit;resize:vertical;outline:none}
+    .tool-output{padding:13px 15px;margin-top:10px;border:1px solid #2a3a4a;border-radius:12px;background:#09121b;color:#c8d5e2;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto}
     .matches{font-size:12px;color:#b4c1ce;white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;margin-top:8px;padding:10px 12px;border-radius:10px;background:#0a1119}
     footer{margin-top:28px;color:#657487;font-size:11px;letter-spacing:.02em}
     @media(max-width:600px){.stats-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.stat-card{padding:10px 8px}.stat-value{font-size:19px}.stat-label{font-size:10px}main{width:min(100% - 28px,900px);padding-top:42px}h1{font-size:clamp(42px,13vw,62px)}.panel{border-radius:19px}.actions{display:grid}.actions button:first-child{width:100%}.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.status{font-size:12px}}
@@ -324,7 +325,8 @@ async function stopLiveCapture(){
   liveMessage("Capture stopped. Your transcript remains available below; use the export tools to save it.");
 }
 liveStop.addEventListener("click",stopLiveCapture);
-\nform.addEventListener("submit",async event=>{
+
+form.addEventListener("submit",async event=>{
   event.preventDefault();
   const vod=document.querySelector("#vod").value.trim();
   button.disabled=true;transcriptText="";transcriptChunks=[];resultActions.classList.add("hidden");document.querySelector("#toolbox").classList.add("hidden");resultBox.classList.add("hidden");resultBox.textContent="";
@@ -394,19 +396,19 @@ const quickOutput=document.querySelector("#quickOutput");
 function quickSet(value){quickOutput.textContent=value;}
 function quickTransform(fn){const input=quickInput.value;if(!input.trim()){quickSet("Enter some text first.");return;}quickInput.value=fn(input);quickSet(quickInput.value);}
 document.querySelector("#qtCount").addEventListener("click",()=>{
-  const t=quickInput.value, words=t.trim()?t.trim().match(/\\S+/g)||[]:[];
-  quickSet("Words: "+words.length+"\nCharacters (with spaces): "+t.length+"\nCharacters (without spaces): "+t.replace(/\\s/g,"").length+"\nLines: "+(t? t.split(/\\r?\\n/).length:0));
+  const t=quickInput.value, words=t.trim()?t.trim().match(/\S+/g)||[]:[];
+  quickSet("Words: "+words.length+"\nCharacters (with spaces): "+t.length+"\nCharacters (without spaces): "+t.replace(/\s/g,"").length+"\nLines: "+(t? t.split(/\r?\n/).length:0));
 });
-document.querySelector("#qtClean").addEventListener("click",()=>quickTransform(t=>t.replace(/[ \\t]+/g," ").replace(/ *\\n */g,"\\n").trim()));
-document.querySelector("#qtLines").addEventListener("click",()=>quickTransform(t=>t.split(/\\r?\\n/).filter(line=>line.trim()).join("\\n")));
-document.querySelector("#qtUnique").addEventListener("click",()=>quickTransform(t=>[...new Set(t.split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean))].join("\\n")));
+document.querySelector("#qtClean").addEventListener("click",()=>quickTransform(t=>t.replace(/[ \t]+/g," ").replace(/ *\n */g,"\n").trim()));
+document.querySelector("#qtLines").addEventListener("click",()=>quickTransform(t=>t.split(/\r?\n/).filter(line=>line.trim()).join("\n")));
+document.querySelector("#qtUnique").addEventListener("click",()=>quickTransform(t=>[...new Set(t.split(/\r?\n/).map(x=>x.trim()).filter(Boolean))].join("\n")));
 document.querySelector("#qtUpper").addEventListener("click",()=>quickTransform(t=>t.toLocaleUpperCase()));
 document.querySelector("#qtLower").addEventListener("click",()=>quickTransform(t=>t.toLocaleLowerCase()));
-document.querySelector("#qtSentence").addEventListener("click",()=>quickTransform(t=>t.toLocaleLowerCase().replace(/(^|[.!?]\\s+)([\\p{L}])/gu,(m,a,b)=>a+b.toLocaleUpperCase())));
-document.querySelector("#qtReverse").addEventListener("click",()=>quickTransform(t=>t.split(/\\r?\\n/).reverse().join("\\n")));
+document.querySelector("#qtSentence").addEventListener("click",()=>quickTransform(t=>t.toLocaleLowerCase().replace(/(^|[.!?]\s+)([\p{L}])/gu,(m,a,b)=>a+b.toLocaleUpperCase())));
+document.querySelector("#qtReverse").addEventListener("click",()=>quickTransform(t=>t.split(/\r?\n/).reverse().join("\n")));
 document.querySelector("#qtCopy").addEventListener("click",async()=>{
   const value=quickInput.value||quickOutput.textContent;
-  try{await navigator.clipboard.writeText(value);quickSet("Copied to clipboard.\\n\\n"+value);}
+  try{await navigator.clipboard.writeText(value);quickSet("Copied to clipboard.\n\n"+value);}
   catch(e){quickSet("Clipboard access is unavailable. Select and copy the text manually.");}
 });
 document.querySelector("#qtDownload").addEventListener("click",()=>{
