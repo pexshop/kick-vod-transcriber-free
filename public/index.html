@@ -75,6 +75,16 @@
   <p class="sub">Extract audio from a public Kick VOD and transcribe it with Whisper directly on your device. Search, summarize, find possible highlights, and export subtitles — without a paid transcription API.</p>
   <div><span class="tag">100% local transcription</span><span class="tag">SRT · VTT · TXT · JSON</span><span class="tag">No account required</span></div>
   <section class="panel">
+    <section class="live-panel" aria-label="Live Kick transcription">
+      <div id="liveIndicator" class="live-indicator">LIVE TRANSCRIPTION · READY</div>
+      <h2>Transcribe a live Kick stream</h2>
+      <p>On a supported desktop browser, open the Kick stream in another tab, then share that tab with audio enabled. Transcription runs locally in this page. iPhone/iPad Safari does not currently support this tab-audio capture workflow.</p>
+      <div class="live-actions">
+        <button id="startLive" type="button">Start live capture</button>
+        <button id="stopLive" class="secondary" type="button" disabled>Stop capture</button>
+      </div>
+      <div id="liveStatus" class="status" role="status" aria-live="polite">Ready. Desktop Chrome or Edge is recommended for tab-audio capture.</div>
+    </section>
     <form id="form">
       <label for="vod">Paste a public Kick VOD link</label>
       <input id="vod" type="url" placeholder="https://kick.com/channel/videos/..." required autocomplete="url">
