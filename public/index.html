@@ -3,61 +3,90 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0b0d12">
+  <meta name="theme-color" content="#080b10">
   <meta name="description" content="Free Kick VOD audio extraction and on-device English speech transcription.">
   <title>Kick Transcriber — Free Local AI</title>
   <style>
-    :root{color-scheme:dark;--bg:#090c11;--panel:#121923;--line:#273344;--muted:#9ba9b9;--accent:#53e0a1;--blue:#8cbcff}
-    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 80% 0,#15332c 0,transparent 42%),var(--bg);color:#f4f7fb;font:16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    main{width:min(780px,calc(100% - 32px));margin:8vh auto 48px}.brand{color:var(--accent);font-size:12px;font-weight:850;letter-spacing:.17em;text-transform:uppercase}
-    h1{font-size:clamp(38px,8vw,64px);line-height:1.02;letter-spacing:-.055em;margin:18px 0}p{color:var(--muted)}
-    .sub{max-width:620px;font-size:17px}.panel{margin-top:30px;padding:26px;border:1px solid var(--line);border-radius:18px;background:#121923ed;box-shadow:0 24px 80px #0006}
-    label{display:block;font-weight:700;margin:0 0 10px}input{width:100%;padding:15px 14px;border-radius:10px;border:1px solid var(--line);background:#090f17;color:#fff;font:inherit}
-    button{padding:14px 18px;border:0;border-radius:10px;background:var(--accent);color:#07130e;font-weight:850;font-size:15px;cursor:pointer}
-    button.secondary{background:#202b39;color:#f3f7fb;border:1px solid #344357}button:disabled{opacity:.5;cursor:wait}
-    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.actions button:first-child{flex:1}
-    .status{margin-top:18px;min-height:26px;color:#dce6ef;white-space:pre-wrap}.small{font-size:13px}.hint{padding:13px 15px;border:1px solid #35465a;border-radius:10px;background:#0c131d;color:#b9c8d8;margin-top:18px;font-size:13px}
-    .result{margin-top:20px;padding:18px;border-radius:12px;background:#090f17;border:1px solid var(--line);white-space:pre-wrap;overflow-wrap:anywhere;max-height:55vh;overflow:auto}
-    .hidden{display:none}.toolbox{margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}.toolbox h2{font-size:18px;margin:0 0 12px}.toolbox input{margin:8px 0}.tool-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.tool-grid button{width:100%}.matches{font-size:13px;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;margin-top:8px}.tag{display:inline-block;color:var(--accent);font-size:12px;font-weight:800;border:1px solid #285b47;border-radius:99px;padding:4px 9px;margin:0 6px 8px 0}
-    footer{margin-top:26px;color:#718093;font-size:12px}@media(max-width:560px){.panel{padding:18px}.actions{display:grid}.actions button:first-child{width:100%}}
-  </style>
+    :root{color-scheme:dark;--bg:#080b10;--surface:#101720;--surface2:#0c121a;--line:#243140;--muted:#93a2b3;--text:#f4f7fb;--accent:#61e6a9;--accent2:#a4ffd2;--blue:#91bfff}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 12% -8%,#164b3a 0,transparent 34%),radial-gradient(ellipse at 100% 12%,#172b4a 0,transparent 30%),var(--bg);color:var(--text);font:15px/1.6 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.14;background-image:linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px);background-size:42px 42px;mask-image:linear-gradient(to bottom,#000,transparent 75%)}
+    main{position:relative;width:min(900px,calc(100% - 36px));margin:0 auto;padding:64px 0 42px}
+    .brand{display:inline-flex;align-items:center;gap:9px;color:var(--accent);font-size:11px;font-weight:900;letter-spacing:.16em;text-transform:uppercase}
+    .brand:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 16px #61e6a9}
+    h1{font-size:clamp(42px,8vw,76px);line-height:.99;letter-spacing:-.065em;margin:22px 0 18px;font-weight:850}
+    h1 br{display:block}
+    p{color:var(--muted)}
+    .sub{max-width:640px;font-size:clamp(15px,2vw,18px);line-height:1.75;margin:0 0 22px}
+    .tag{display:inline-flex;align-items:center;color:#b7f7d7;font-size:11px;font-weight:750;letter-spacing:.02em;border:1px solid #285743;background:#10241c;border-radius:999px;padding:6px 11px;margin:0 7px 8px 0}
+    .panel{margin-top:30px;padding:clamp(20px,4vw,34px);border:1px solid #2a3949;border-radius:24px;background:linear-gradient(145deg,#131d28f5,#0e151ef5);box-shadow:0 28px 90px #0008;backdrop-filter:blur(16px)}
+    label{display:block;font-weight:750;font-size:13px;letter-spacing:.02em;margin:0 0 10px;color:#e6edf5}
+    input{width:100%;min-height:54px;padding:14px 16px;border-radius:13px;border:1px solid #314253;background:#090f16;color:#fff;font:inherit;outline:none;transition:border-color .2s,box-shadow .2s}
+    input::placeholder{color:#627184}
+    input:focus{border-color:var(--accent);box-shadow:0 0 0 3px #61e6a91c}
+    button{min-height:50px;padding:13px 18px;border:1px solid transparent;border-radius:13px;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#07150e;font-weight:850;font-size:14px;cursor:pointer;transition:transform .16s,filter .16s,border-color .16s}
+    button:hover{filter:brightness(1.06);transform:translateY(-1px)}
+    button:active{transform:translateY(0)}
+    button.secondary{background:#172330;color:#eaf1f8;border:1px solid #304255}
+    button.secondary:hover{background:#203143;border-color:#496078}
+    button:disabled{opacity:.48;cursor:wait;transform:none}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}
+    .actions button:first-child{flex:1}
+    .status{display:flex;align-items:flex-start;gap:10px;margin-top:18px;min-height:48px;padding:13px 15px;border-radius:12px;border:1px solid #26394a;background:#0a121b;color:#dce8f3;white-space:pre-wrap;font-size:13px}
+    .status:before{content:"";flex:0 0 7px;width:7px;height:7px;margin-top:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px #61e6a9}
+    .small{font-size:12px;line-height:1.7}
+    .hint{padding:15px 17px;border:1px solid #344557;border-radius:13px;background:#0b141e;color:#afbdcb;margin-top:20px;font-size:12px;line-height:1.7}
+    .hint strong{color:#e6edf5}
+    .result{margin-top:20px;padding:20px;border-radius:14px;background:#080e15;border:1px solid #29394a;white-space:pre-wrap;overflow-wrap:anywhere;max-height:55vh;overflow:auto;color:#e6edf5;font:13px/1.8 ui-monospace,SFMono-Regular,Menlo,monospace}
+    .hidden{display:none}
+    .toolbox{margin-top:22px;padding-top:22px;border-top:1px solid #29394a}
+    .toolbox h2{font-size:18px;letter-spacing:-.02em;margin:0 0 14px}
+    .toolbox input{margin:4px 0 10px}
+    .tool-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .tool-grid button{width:100%;font-size:12px;padding:12px 9px}
+    .matches{font-size:12px;color:#b4c1ce;white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;margin-top:8px;padding:10px 12px;border-radius:10px;background:#0a1119}
+    footer{margin-top:28px;color:#657487;font-size:11px;letter-spacing:.02em}
+    @media(max-width:600px){main{width:min(100% - 28px,900px);padding-top:42px}h1{font-size:clamp(42px,13vw,62px)}.panel{border-radius:19px}.actions{display:grid}.actions button:first-child{width:100%}.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.status{font-size:12px}}
+    @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important}}
+</style>
 </head>
 <body>
 <main>
-  <div class="brand">Free · Open-source AI · Kick</div>
-  <h1>Every stream.<br>Every word.</h1>
-  <p class="sub">Turn a public Kick VOD into an English transcript. Audio is extracted by the free service, then Whisper runs directly in your browser — no paid transcription API and no account required.</p>
-  <div><span class="tag">No OpenAI API</span><span class="tag">Runs on your device</span><span class="tag">TXT export</span></div>
+  <div class="brand">Kick VOD Studio · Free local AI</div>
+  <h1>Turn streams<br>into searchable<br>words.</h1>
+  <p class="sub">Extract audio from a public Kick VOD and transcribe it with Whisper directly on your device. Search, summarize, find possible highlights, and export subtitles — without a paid transcription API.</p>
+  <div><span class="tag">100% local transcription</span><span class="tag">SRT · VTT · TXT · JSON</span><span class="tag">No account required</span></div>
   <section class="panel">
     <form id="form">
-      <label for="vod">Public Kick VOD URL</label>
+      <label for="vod">Paste a public Kick VOD link</label>
       <input id="vod" type="url" placeholder="https://kick.com/channel/videos/..." required autocomplete="url">
-      <div class="actions"><button id="submit" type="submit">Extract &amp; transcribe in English</button></div>
+      <div class="actions"><button id="submit" type="submit">Start transcription</button></div>
     </form>
-    <div id="status" class="status" role="status" aria-live="polite">Ready. The first run downloads the speech model to your browser.</div>
+    <div id="status" class="status" role="status" aria-live="polite">Ready when you are. First use downloads the speech model to your device.</div>
     <div class="actions hidden" id="resultActions">
       <button class="secondary" id="copy" type="button">Copy transcript</button>
       <button class="secondary" id="download" type="button">Download TXT</button>
     </div>
     <pre id="result" class="result hidden"></pre>
     <section id="toolbox" class="toolbox hidden" aria-label="Transcript tools">
-      <h2>Transcript tools</h2>
-      <label for="transcriptSearch">Search in transcript</label>
-      <input id="transcriptSearch" type="search" placeholder="Type a word or phrase…">
+      <h2>Explore your transcript</h2>
+      <label for="transcriptSearch">Find a word or phrase</label>
+      <input id="transcriptSearch" type="search" placeholder="Search the transcript…">
       <div id="searchMatches" class="matches" aria-live="polite"></div>
       <div class="tool-grid" style="margin-top:12px">
         <button class="secondary" id="srt" type="button">Download SRT</button>
         <button class="secondary" id="vtt" type="button">Download VTT</button>
         <button class="secondary" id="json" type="button">Download JSON</button>
         <button class="secondary" id="clearSearch" type="button">Clear search</button>
-        <button class="secondary" id="makeSummary" type="button">Create quick summary</button>
-        <button class="secondary" id="findMoments" type="button">Find key moments</button>
+        <button class="secondary" id="makeSummary" type="button">Quick summary</button>
+        <button class="secondary" id="findMoments" type="button">Find highlights</button>
       </div>
     </section>
     <div class="hint"><strong>Free-tier limits:</strong> up to 30 minutes per VOD and 24 MB extracted audio. The first model download is large. Transcription speed depends on your device; phones may take a while, so keep this page open. The free hosting service may sleep between uses.</div>
     <p class="small">Only process public VODs you are authorized to access. Private, login-gated, DRM-protected, deleted, or otherwise restricted content is not supported.</p>
   </section>
-  <footer>Independent project. Not affiliated with or endorsed by Kick. Speech recognition model: open-source Whisper tiny English.</footer>
+  <footer>Independent open-source project · Not affiliated with Kick · Speech recognition: Whisper tiny English</footer>
 </main>
 <script type="module">
 const form=document.querySelector("#form");
