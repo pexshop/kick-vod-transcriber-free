@@ -40,7 +40,11 @@ export default {
         return Response.json({ error: "Invalid JSON body.", requestId }, { status: 400 });
       }
 
-      if (typeof body.url !== "string" || !/^https?:\\/\\/(www\\.)?kick\\.com\\//i.test(body.url)) {
+      let vodUrl;
+      try { vodUrl = new URL(body.url); } catch {
+        return Response.json({ error: "Enter a valid public Kick VOD URL.", requestId }, { status: 400 });
+      }
+      if (typeof body.url !== "string" || !["http:", "https:"].includes(vodUrl.protocol) || !["kick.com", "www.kick.com"].includes(vodUrl.hostname.toLowerCase())) {
         return Response.json({ error: "Enter a valid public Kick VOD URL.", requestId }, { status: 400 });
       }
 
