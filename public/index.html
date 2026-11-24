@@ -78,11 +78,28 @@ form.addEventListener("submit",async event=>{
   const vod=document.querySelector("#vod").value.trim();
   button.disabled=true;resultActions.classList.add("hidden");resultBox.classList.add("hidden");resultBox.textContent="";
   try{
-    setStatus("Connecting to the free audio extractor…");
-    const response=await fetch("/api/audio",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:vod})});
-    if(!response.ok){const error=await response.json().catch(()=>({}));throw new Error(error.error||"Audio extraction failed.");}
+    setStatus("Connecting to the free audio extractor… The free server may need up to a few minutes to wake up.");
+    const controller=new AbortController();
+    const extractionTimer=setTimeout(()=>controller.abort(),10*60*1000);
+    let response;
+    try{
+      response=await fetch("/api/audio",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:vod}),signal:controller.signal});
+    }catch(fetchError){
+      if(fetchError?.name==="AbortError")throw new Error("Audio extraction timed out after 10 minutes. The free server may be sleeping; wait a minute and try again.");
+      throw new Error("Could not connect to the extraction service. Please retry, then check the service logs if it continues.");
+    }finally{clearTimeout(extractionTimer);}
+    if(!response.ok){
+      const error=await response.json().catch(()=>({}));
+      const detail=error.error||"Audio extraction failed.";
+      if(response.status===401)throw new Error("Service authentication failed. The Worker and Render tokens must match.");
+      if(response.status===413)throw new Error(detail.includes("24 MB")?detail:"This VOD exceeds the free audio size or duration limit.");
+      if(response.status===422)throw new Error("Kick could not provide this VOD as audio. It may be unavailable, restricted, or unsupported. Details: "+detail);
+      if(response.status===502||response.status===504)throw new Error(detail);
+      throw new Error(detail+" (HTTP "+response.status+")");
+    }
     const blob=await response.blob();
-    if(blob.size>24*1024*1024)throw new Error("Audio is larger than the 24 MB free limit.");
+    if(blob.size===0)throw new Error("The extraction service returned an empty audio file. Please retry.");
+    if(blob.size>24*1024*1024)throw new Error("Extracted audio is larger than the 24 MB free limit.");
     setStatus("Audio ready. Preparing your browser for local transcription…");
 
     const audioContext=new AudioContext();
