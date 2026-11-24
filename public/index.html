@@ -79,9 +79,10 @@
     <section class="live-panel" aria-label="Live Kick transcription">
       <div id="liveIndicator" class="live-indicator">LIVE TRANSCRIPTION · READY</div>
       <h2>Transcribe a live Kick stream</h2>
-      <p>On a supported desktop browser, open the Kick stream in another tab, then share that tab with audio enabled. Transcription runs locally in this page. iPhone/iPad Safari does not currently support this tab-audio capture workflow.</p>
+      <p>iPhone/iPad: allow microphone access and play the Kick stream aloud nearby. Desktop: share the Kick browser tab with audio enabled. Transcription runs locally in this page.</p>
       <div class="live-actions">
-        <button id="startLive" type="button">Start live capture</button>
+        <button id="startLive" type="button">Start tab audio (desktop)</button>
+        <button id="startMic" class="secondary" type="button">Start microphone (iPhone)</button>
         <button id="stopLive" class="secondary" type="button" disabled>Stop capture</button>
       </div>
       <div id="liveStatus" class="status" role="status" aria-live="polite">Ready. Desktop Chrome or Edge is recommended for tab-audio capture.</div>
@@ -216,6 +217,7 @@ function resampleTo16k(buffer){
 // Live tab-audio capture: rolling 20-second chunks are transcribed locally.
 const liveStart=document.querySelector("#startLive");
 const liveStop=document.querySelector("#stopLive");
+const liveMic=document.querySelector("#startMic");
 const liveStatus=document.querySelector("#liveStatus");
 const liveIndicator=document.querySelector("#liveIndicator");
 let liveStream=null,liveContext=null,liveProcessor=null,liveWorker=null;
@@ -313,6 +315,28 @@ liveStart.addEventListener("click",async()=>{
     liveMessage("Capturing tab audio. First transcript appears after approximately 20 seconds and model loading.");
   }catch(error){liveStart.disabled=false;liveMessage(error.message||String(error));}
 });
+async function startMicrophoneCapture(){
+  if(!navigator.mediaDevices?.getUserMedia){liveMessage("Microphone capture is unavailable. Open this site in Safari over HTTPS and check microphone permissions.");return;}
+  liveMic.disabled=true;
+  try{
+    liveMessage("Requesting microphone permission… Tap Allow when Safari asks.");
+    liveStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:true},video:false});
+    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+    if(!AudioContextClass)throw new Error("This browser does not support audio capture.");
+    liveContext=new AudioContextClass();await liveContext.resume();liveSampleRate=liveContext.sampleRate;
+    const source=liveContext.createMediaStreamSource(liveStream);
+    liveProcessor=liveContext.createScriptProcessor(4096,1,1);
+    const mute=liveContext.createGain();mute.gain.value=0;
+    liveBuffers=[];liveSamples=0;liveChunkIndex=0;liveQueue=Promise.resolve();liveStopping=false;
+    transcriptText="";transcriptChunks=[];resultBox.textContent="";resultBox.classList.add("hidden");resultActions.classList.add("hidden");document.querySelector("#toolbox").classList.add("hidden");
+    liveProcessor.onaudioprocess=event=>{if(liveStopping)return;const copy=new Float32Array(event.inputBuffer.getChannelData(0));liveBuffers.push(copy);liveSamples+=copy.length;takeLiveChunk(false);};
+    source.connect(liveProcessor);liveProcessor.connect(mute);mute.connect(liveContext.destination);
+    liveStream.getAudioTracks().forEach(track=>track.addEventListener("ended",()=>stopLiveCapture()));
+    liveStop.disabled=false;liveIndicator.classList.add("active");liveIndicator.textContent="LIVE TRANSCRIPTION · MICROPHONE";
+    liveMessage("Microphone is listening. Play Kick aloud near this device. First text appears after about 20 seconds plus model loading.");
+  }catch(error){if(liveStream){liveStream.getTracks().forEach(t=>t.stop());liveStream=null;}liveMic.disabled=false;liveMessage(error.message||String(error));}
+}
+liveMic.addEventListener("click",startMicrophoneCapture);
 async function stopLiveCapture(){
   if(!liveStream||liveStopping)return;
   liveStopping=true;liveStop.disabled=true;
@@ -321,7 +345,7 @@ async function stopLiveCapture(){
   liveStream.getTracks().forEach(track=>track.stop());liveStream=null;
   if(liveContext){await liveContext.close().catch(()=>{});liveContext=null;}
   await liveQueue;
-  liveProcessor=null;liveStart.disabled=false;liveIndicator.classList.remove("active");liveIndicator.textContent="LIVE TRANSCRIPTION · STOPPED";
+  liveProcessor=null;liveStart.disabled=false;liveMic.disabled=false;liveIndicator.classList.remove("active");liveIndicator.textContent="LIVE TRANSCRIPTION · STOPPED";
   liveMessage("Capture stopped. Your transcript remains available below; use the export tools to save it.");
 }
 liveStop.addEventListener("click",stopLiveCapture);
