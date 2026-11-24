@@ -54,6 +54,17 @@
     .matches{font-size:12px;color:#b4c1ce;white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;margin-top:8px;padding:10px 12px;border-radius:10px;background:#0a1119}
     footer{margin-top:28px;color:#657487;font-size:11px;letter-spacing:.02em}
     @media(max-width:600px){.stats-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.stat-card{padding:10px 8px}.stat-value{font-size:19px}.stat-label{font-size:10px}main{width:min(100% - 28px,900px);padding-top:42px}h1{font-size:clamp(42px,13vw,62px)}.panel{border-radius:19px}.actions{display:grid}.actions button:first-child{width:100%}.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.status{font-size:12px}}
+
+    .live-panel{margin:0 0 24px;padding:18px;border:1px solid #285743;border-radius:16px;background:linear-gradient(145deg,#10231c,#0c1519)}
+    .live-panel h2{font-size:19px;letter-spacing:-.03em;margin:0 0 6px}
+    .live-panel p{font-size:12px;line-height:1.65;margin:0 0 14px}
+    .live-actions{display:flex;gap:10px;flex-wrap:wrap}
+    .live-actions button{flex:1;min-width:140px}
+    .live-indicator{display:inline-flex;align-items:center;gap:8px;color:#b7f7d7;font-size:11px;font-weight:800;margin-bottom:10px}
+    .live-indicator:before{content:"";width:8px;height:8px;border-radius:50%;background:#64748b}
+    .live-indicator.active:before{background:#ff5b65;box-shadow:0 0 12px #ff5b65;animation:pulse 1.2s infinite}
+    @keyframes pulse{50%{opacity:.35}}
+    @media(max-width:600px){.live-actions{display:grid}}
     @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important}}
 </style>
 </head>
@@ -169,7 +180,121 @@ function resampleTo16k(buffer){
   return out;
 }
 
-form.addEventListener("submit",async event=>{
+
+
+// Live tab-audio capture: rolling 20-second chunks are transcribed locally.
+const liveStart=document.querySelector("#startLive");
+const liveStop=document.querySelector("#stopLive");
+const liveStatus=document.querySelector("#liveStatus");
+const liveIndicator=document.querySelector("#liveIndicator");
+let liveStream=null,liveContext=null,liveProcessor=null,liveWorker=null;
+let liveBuffers=[],liveSamples=0,liveSampleRate=0,liveQueue=Promise.resolve();
+let liveStartedAt=0,liveChunkIndex=0,liveStopping=false;
+function liveMessage(message){liveStatus.textContent=message;}
+function getLiveWorker(){
+  if(liveWorker)return liveWorker;
+  liveWorker=new Worker("/transcribe-worker.js",{type:"module"});
+  liveWorker.onerror=()=>liveMessage("The local transcription worker encountered an error. Stop and restart capture.");
+  return liveWorker;
+}
+function transcribeLiveChunk(audio,index){
+  return new Promise((resolve,reject)=>{
+    const worker=getLiveWorker();
+    const onMessage=({data})=>{
+      if(data.type==="progress"){liveMessage(data.message);return;}
+      worker.removeEventListener("message",onMessage);
+      if(data.type==="complete")resolve(data.output);
+      else if(data.type==="error")reject(new Error(data.message||"Live transcription failed."));
+    };
+    worker.addEventListener("message",onMessage);
+    worker.postMessage({type:"transcribe",audio},[audio.buffer]);
+  });
+}
+function resampleFloatTo16k(input,rate){
+  if(rate===16000)return input;
+  const ratio=rate/16000,out=new Float32Array(Math.floor(input.length/ratio));
+  for(let i=0;i<out.length;i++){
+    const p=i*ratio,a=Math.floor(p),b=Math.min(a+1,input.length-1),t=p-a;
+    out[i]=input[a]*(1-t)+input[b]*t;
+  }
+  return out;
+}
+function appendLiveOutput(output,index){
+  const offset=index*20, chunks=output.chunks||[];
+  if(chunks.length){
+    for(const chunk of chunks){
+      const t=chunk.timestamp||[null,null];
+      transcriptChunks.push({text:chunk.text||"",timestamp:[typeof t[0]==="number"?t[0]+offset:null,typeof t[1]==="number"?t[1]+offset:null]});
+      const stamp=typeof t[0]==="number"?"["+formatSrtTime(t[0]+offset).slice(0,8)+"] ":"";
+      transcriptText+=(transcriptText?"\n":"")+stamp+String(chunk.text||"").trim();
+    }
+  }else if(output.text){transcriptText+=(transcriptText?"\n":"")+output.text.trim();}
+  resultBox.textContent=transcriptText;
+  resultBox.classList.remove("hidden");resultActions.classList.remove("hidden");
+  document.querySelector("#toolbox").classList.remove("hidden");
+  liveMessage("Live audio processed through "+((index+1)*20)+" seconds. Keep the Kick tab playing; new text appears after each segment.");
+}
+function queueLiveAudio(samples){
+  if(!samples.length)return;
+  const index=liveChunkIndex++;
+  const audio=resampleFloatTo16k(samples,liveSampleRate);
+  liveQueue=liveQueue.then(async()=>{
+    liveMessage("Transcribing live segment "+(index+1)+" locally…");
+    const output=await transcribeLiveChunk(audio,index);
+    appendLiveOutput(output,index);
+  }).catch(error=>liveMessage("Segment "+(index+1)+" failed: "+(error.message||error)+". Capture will continue."));
+}
+function takeLiveChunk(force=false){
+  if(!liveSamples||(!force&&liveSamples<liveSampleRate*20))return;
+  const count=force?liveSamples:liveSampleRate*20;
+  const merged=new Float32Array(count);let offset=0,remaining=count;
+  while(remaining>0&&liveBuffers.length){
+    const first=liveBuffers[0],take=Math.min(first.length,remaining);
+    merged.set(first.subarray(0,take),offset);offset+=take;remaining-=take;
+    if(take===first.length)liveBuffers.shift();else liveBuffers[0]=first.subarray(take);
+  }
+  liveSamples-=count;
+  queueLiveAudio(merged);
+}
+liveStart.addEventListener("click",async()=>{
+  if(!navigator.mediaDevices?.getDisplayMedia){liveMessage("This browser does not support screen/tab audio capture. Try desktop Chrome or Edge.");return;}
+  liveStart.disabled=true;
+  try{
+    liveMessage("Choose the browser tab playing your Kick live stream, then enable Share tab audio in the picker.");
+    liveStream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+    if(!liveStream.getAudioTracks().length){liveStream.getTracks().forEach(t=>t.stop());liveStream=null;throw new Error("No tab audio was shared. Start again and enable Share tab audio.");}
+    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+    liveContext=new AudioContextClass();await liveContext.resume();liveSampleRate=liveContext.sampleRate;
+    const source=liveContext.createMediaStreamSource(liveStream);
+    liveProcessor=liveContext.createScriptProcessor(4096,1,1);
+    const mute=liveContext.createGain();mute.gain.value=0;
+    liveBuffers=[];liveSamples=0;liveChunkIndex=0;liveQueue=Promise.resolve();liveStartedAt=Date.now();liveStopping=false;
+    transcriptText="";transcriptChunks=[];resultBox.textContent="";resultBox.classList.add("hidden");resultActions.classList.add("hidden");document.querySelector("#toolbox").classList.add("hidden");
+    liveProcessor.onaudioprocess=event=>{
+      if(liveStopping)return;
+      const input=event.inputBuffer.getChannelData(0),copy=new Float32Array(input);
+      liveBuffers.push(copy);liveSamples+=copy.length;takeLiveChunk(false);
+    };
+    source.connect(liveProcessor);liveProcessor.connect(mute);mute.connect(liveContext.destination);
+    liveStream.getVideoTracks().forEach(track=>track.addEventListener("ended",()=>stopLiveCapture()));
+    liveStream.getAudioTracks().forEach(track=>track.addEventListener("ended",()=>stopLiveCapture()));
+    liveStop.disabled=false;liveIndicator.classList.add("active");liveIndicator.textContent="LIVE TRANSCRIPTION · CAPTURING";
+    liveMessage("Capturing tab audio. First transcript appears after approximately 20 seconds and model loading.");
+  }catch(error){liveStart.disabled=false;liveMessage(error.message||String(error));}
+});
+async function stopLiveCapture(){
+  if(!liveStream||liveStopping)return;
+  liveStopping=true;liveStop.disabled=true;
+  if(liveProcessor){liveProcessor.disconnect();liveProcessor.onaudioprocess=null;}
+  takeLiveChunk(true);
+  liveStream.getTracks().forEach(track=>track.stop());liveStream=null;
+  if(liveContext){await liveContext.close().catch(()=>{});liveContext=null;}
+  await liveQueue;
+  liveProcessor=null;liveStart.disabled=false;liveIndicator.classList.remove("active");liveIndicator.textContent="LIVE TRANSCRIPTION · STOPPED";
+  liveMessage("Capture stopped. Your transcript remains available below; use the export tools to save it.");
+}
+liveStop.addEventListener("click",stopLiveCapture);
+\nform.addEventListener("submit",async event=>{
   event.preventDefault();
   const vod=document.querySelector("#vod").value.trim();
   button.disabled=true;transcriptText="";transcriptChunks=[];resultActions.classList.add("hidden");document.querySelector("#toolbox").classList.add("hidden");resultBox.classList.add("hidden");resultBox.textContent="";
