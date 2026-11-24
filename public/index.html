@@ -18,7 +18,7 @@
     .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.actions button:first-child{flex:1}
     .status{margin-top:18px;min-height:26px;color:#dce6ef;white-space:pre-wrap}.small{font-size:13px}.hint{padding:13px 15px;border:1px solid #35465a;border-radius:10px;background:#0c131d;color:#b9c8d8;margin-top:18px;font-size:13px}
     .result{margin-top:20px;padding:18px;border-radius:12px;background:#090f17;border:1px solid var(--line);white-space:pre-wrap;overflow-wrap:anywhere;max-height:55vh;overflow:auto}
-    .hidden{display:none}.tag{display:inline-block;color:var(--accent);font-size:12px;font-weight:800;border:1px solid #285b47;border-radius:99px;padding:4px 9px;margin:0 6px 8px 0}
+    .hidden{display:none}.toolbox{margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}.toolbox h2{font-size:18px;margin:0 0 12px}.toolbox input{margin:8px 0}.tool-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.tool-grid button{width:100%}.matches{font-size:13px;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;margin-top:8px}.tag{display:inline-block;color:var(--accent);font-size:12px;font-weight:800;border:1px solid #285b47;border-radius:99px;padding:4px 9px;margin:0 6px 8px 0}
     footer{margin-top:26px;color:#718093;font-size:12px}@media(max-width:560px){.panel{padding:18px}.actions{display:grid}.actions button:first-child{width:100%}}
   </style>
 </head>
@@ -40,6 +40,18 @@
       <button class="secondary" id="download" type="button">Download TXT</button>
     </div>
     <pre id="result" class="result hidden"></pre>
+    <section id="toolbox" class="toolbox hidden" aria-label="Transcript tools">
+      <h2>Transcript tools</h2>
+      <label for="transcriptSearch">Search in transcript</label>
+      <input id="transcriptSearch" type="search" placeholder="Type a word or phrase…">
+      <div id="searchMatches" class="matches" aria-live="polite"></div>
+      <div class="tool-grid" style="margin-top:12px">
+        <button class="secondary" id="srt" type="button">Download SRT</button>
+        <button class="secondary" id="vtt" type="button">Download VTT</button>
+        <button class="secondary" id="json" type="button">Download JSON</button>
+        <button class="secondary" id="clearSearch" type="button">Clear search</button>
+      </div>
+    </section>
     <div class="hint"><strong>Free-tier limits:</strong> up to 30 minutes per VOD and 24 MB extracted audio. The first model download is large. Transcription speed depends on your device; phones may take a while, so keep this page open. The free hosting service may sleep between uses.</div>
     <p class="small">Only process public VODs you are authorized to access. Private, login-gated, DRM-protected, deleted, or otherwise restricted content is not supported.</p>
   </section>
@@ -52,6 +64,7 @@ const statusBox=document.querySelector("#status");
 const resultBox=document.querySelector("#result");
 const resultActions=document.querySelector("#resultActions");
 let transcriptText="";
+let transcriptChunks=[];
 
 function transcribeInWorker(audio){
   return new Promise((resolve,reject)=>{
@@ -103,7 +116,7 @@ function resampleTo16k(buffer){
 form.addEventListener("submit",async event=>{
   event.preventDefault();
   const vod=document.querySelector("#vod").value.trim();
-  button.disabled=true;resultActions.classList.add("hidden");resultBox.classList.add("hidden");resultBox.textContent="";
+  button.disabled=true;transcriptText="";transcriptChunks=[];resultActions.classList.add("hidden");document.querySelector("#toolbox").classList.add("hidden");resultBox.classList.add("hidden");resultBox.textContent="";
   try{
     setStatus("Connecting to the free audio extractor… The free server may need up to a few minutes to wake up.");
     const controller=new AbortController();
@@ -144,6 +157,7 @@ form.addEventListener("submit",async event=>{
     setStatus("Starting local transcription in a background worker…");
     const output=await transcribeInWorker(audio);
     const chunks=output.chunks||[];
+    transcriptChunks=chunks;
     if(chunks.length){
       transcriptText=chunks.map(chunk=>{
         const start=chunk.timestamp?.[0];
@@ -153,13 +167,59 @@ form.addEventListener("submit",async event=>{
     }else transcriptText=output.text||"";
     if(!transcriptText.trim())throw new Error("No speech was detected in this VOD.");
     resultBox.textContent=transcriptText;
-    resultBox.classList.remove("hidden");resultActions.classList.remove("hidden");
+    resultBox.classList.remove("hidden");resultActions.classList.remove("hidden");document.querySelector("#toolbox").classList.remove("hidden");
     setStatus("Done. Transcription was performed locally in your browser.");
   }catch(error){
     setStatus("Could not complete transcription: "+(error?.message||String(error)));
   }finally{
     button.disabled=false;
   }
+});
+
+
+function formatSrtTime(seconds){
+  const ms=Math.max(0,Math.round((Number(seconds)||0)*1000));
+  const h=Math.floor(ms/3600000),m=Math.floor((ms%3600000)/60000),s=Math.floor((ms%60000)/1000),r=ms%1000;
+  return [h,m,s].map(n=>String(n).padStart(2,"0")).join(":")+","+String(r).padStart(3,"0");
+}
+function formatVttTime(seconds){return formatSrtTime(seconds).replace(",",".");}
+function downloadText(filename,content,type){
+  const url=URL.createObjectURL(new Blob([content],{type}));
+  const a=document.createElement("a");a.href=url;a.download=filename;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function subtitleContent(kind){
+  if(!transcriptChunks.length)throw new Error("Timestamped subtitle segments are not available for this transcript.");
+  const rows=transcriptChunks.filter(x=>Array.isArray(x.timestamp)&&typeof x.timestamp[0]==="number"&&typeof x.timestamp[1]==="number");
+  if(!rows.length)throw new Error("No valid timestamps were returned by the speech model.");
+  const vtt=kind==="vtt";
+  return (vtt?"WEBVTT\n\n":"")+rows.map((chunk,i)=>{
+    const start=vtt?formatVttTime(chunk.timestamp[0]):formatSrtTime(chunk.timestamp[0]);
+    const end=vtt?formatVttTime(chunk.timestamp[1]):formatSrtTime(chunk.timestamp[1]);
+    return (vtt?"":String(i+1)+"\n")+start+" --> "+end+"\n"+String(chunk.text||"").trim();
+  }).join("\n\n")+"\n";
+}
+document.querySelector("#srt").addEventListener("click",()=>{
+  try{downloadText("kick-subtitles.srt",subtitleContent("srt"),"application/x-subrip;charset=utf-8");setStatus("SRT subtitles downloaded.");}
+  catch(e){setStatus(e.message);}
+});
+document.querySelector("#vtt").addEventListener("click",()=>{
+  try{downloadText("kick-subtitles.vtt",subtitleContent("vtt"),"text/vtt;charset=utf-8");setStatus("VTT subtitles downloaded.");}
+  catch(e){setStatus(e.message);}
+});
+document.querySelector("#json").addEventListener("click",()=>{
+  downloadText("kick-transcript.json",JSON.stringify({text:transcriptText,chunks:transcriptChunks},null,2),"application/json;charset=utf-8");
+  setStatus("JSON transcript downloaded.");
+});
+document.querySelector("#transcriptSearch").addEventListener("input",event=>{
+  const q=event.target.value.trim().toLowerCase(),out=document.querySelector("#searchMatches");
+  if(!q){out.textContent="";return;}
+  const matches=transcriptText.split(/\n/).filter(line=>line.toLowerCase().includes(q));
+  out.textContent=matches.length?matches.slice(0,30).join("\n")+(matches.length>30?"\n… showing first 30 matches":""): "No matches found.";
+});
+document.querySelector("#clearSearch").addEventListener("click",()=>{
+  document.querySelector("#transcriptSearch").value="";
+  document.querySelector("#searchMatches").textContent="";
 });
 
 document.querySelector("#copy").addEventListener("click",async()=>{
